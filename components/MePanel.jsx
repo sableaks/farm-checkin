@@ -1,10 +1,11 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { buzz, post } from '@/lib/client';
+import { buzz, post, useNow } from '@/lib/client';
 import { clock, hm, liveTotals, timer } from '@/lib/time';
 import { Avatar, StatusPill } from './ui';
 
-export default function MePanel({ worker, status, log, settings, now, apply, onChange }) {
+export default function MePanel({ worker, status, log, settings, apply, onChange }) {
+  const now = useNow();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [confirmOut, setConfirmOut] = useState(false);

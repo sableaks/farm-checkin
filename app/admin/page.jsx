@@ -1,13 +1,15 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useFarm, useNow, useStored, post } from '@/lib/client';
+import { useFarm, useNow, useMinute, useStored, post } from '@/lib/client';
 import { dayKey, hm, liveTotals, timer } from '@/lib/time';
 import { Avatar, Header, Splash, StatusPill } from '@/components/ui';
 import Calendar from '@/components/Calendar';
+import Summary from '@/components/Summary';
 
 const TABS = [
   ['live', 'На живо'],
+  ['summary', 'Резюме'],
   ['workers', 'Работници'],
   ['calendar', 'Календар'],
   ['settings', 'Настройки'],
@@ -15,7 +17,6 @@ const TABS = [
 
 export default function Admin() {
   const { data, online, apply } = useFarm();
-  const now = useNow();
   const [key, setKey] = useStored('farm-admin', null);
   const [authed, setAuthed] = useState(false);
   const [tab, setTab] = useState('live');
@@ -58,7 +59,7 @@ export default function Admin() {
     return () => clearTimeout(id);
   }, [toast]);
 
-  const ok = (t) => setToast({ t, bad: false, id: Date.now() });
+  const ok = useCallback((t) => setToast({ t, bad: false, id: Date.now() }), []);
 
   if (!authed) return <Login onKey={setKey} hasKey={!!key} />;
   if (!data) return <Splash />;
@@ -67,7 +68,6 @@ export default function Admin() {
     <main className="wrap wide">
       <Header
         online={online}
-        now={now}
         right={
           <button className="link" onClick={() => { setKey(null); setAuthed(false); }}>
             Изход
@@ -83,9 +83,10 @@ export default function Admin() {
       </nav>
 
       <div key={tab} className="fade-in">
-        {tab === 'live' && <Live data={data} now={now} call={call} ok={ok} />}
+        {tab === 'live' && <Live data={data} call={call} ok={ok} />}
+        {tab === 'summary' && <Summary data={data} adminKey={key} />}
         {tab === 'workers' && <Workers data={data} call={call} ok={ok} />}
-        {tab === 'calendar' && <Cal data={data} now={now} call={call} ok={ok} />}
+        {tab === 'calendar' && <Cal data={data} call={call} ok={ok} />}
         {tab === 'settings' && <Settings data={data} call={call} ok={ok} />}
       </div>
 
@@ -131,61 +132,75 @@ function Login({ onKey, hasKey }) {
   );
 }
 
-function Live({ data, now, call, ok }) {
-  const { workers, status, logs, settings } = data;
-  const [confirm, setConfirm] = useState(null);
-  const today = dayKey(now);
+function LiveKpis({ data }) {
+  const now = useNow();
+  const { workers, status, logs } = data;
   let teamToday = 0;
   workers.forEach((w) => (teamToday += liveTotals(status[w.id], logs[w.id], now).w));
   const active = workers.filter((w) => (status[w.id]?.state || 'off') !== 'off').length;
+  return (
+    <div className="kpis">
+      <div className="kpi card"><b>{active}</b><span>на работа сега</span></div>
+      <div className="kpi card"><b>{hm(teamToday)}</b><span>общо днес</span></div>
+      <div className="kpi card"><b>{workers.length}</b><span>работници</span></div>
+    </div>
+  );
+}
 
+const LiveRow = memo(function LiveRow({ w, i, st, log, settings, call, ok }) {
+  const now = useNow();
+  const [confirm, setConfirm] = useState(false);
+  const state = st?.state || 'off';
+  const t = liveTotals(st, log, now);
+  const over = state === 'break' && settings.breakMaxMin > 0 && t.elapsed > settings.breakMaxMin * 60;
+  return (
+    <div className={`row card state-${state} stagger`} style={{ '--i': i }}>
+      <div className="row-main static">
+        <Avatar id={w.id} name={w.name} />
+        <div className="row-info">
+          <div className="row-name">{w.name}</div>
+          <div className="row-sub">
+            <StatusPill state={state} />
+            {state !== 'off' && <span className={`row-timer${over ? ' danger' : ''}`}>{timer(t.elapsed)}</span>}
+          </div>
+          <div className="row-meta">
+            Днес: <b>{hm(t.w)}</b> работа · {hm(t.b)} почивка · {t.n}
+            {settings.maxBreaks === null ? '' : `/${settings.maxBreaks}`} почивки
+            {state === 'off' && st?.lastOut && dayKey(st.lastOut) === t.today ? ' · приключи днес' : ''}
+          </div>
+        </div>
+        {state !== 'off' && (
+          <button
+            className={`btn btn-sm btn-red-o${confirm ? ' confirm' : ''}`}
+            onClick={async () => {
+              if (!confirm) {
+                setConfirm(true);
+                setTimeout(() => setConfirm(false), 3500);
+                return;
+              }
+              setConfirm(false);
+              await call({ action: 'forceOut', id: w.id }).catch(() => {});
+              ok(`${w.name} е приключен`);
+            }}
+          >
+            {confirm ? 'Сигурен?' : 'Приключи'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+});
+
+function Live({ data, call, ok }) {
+  const { workers, status, logs, settings } = data;
   return (
     <section>
-      <div className="kpis">
-        <div className="kpi card"><b>{active}</b><span>на работа сега</span></div>
-        <div className="kpi card"><b>{hm(teamToday)}</b><span>общо днес</span></div>
-        <div className="kpi card"><b>{workers.length}</b><span>работници</span></div>
-      </div>
+      <LiveKpis data={data} />
       <div className="rows">
         {workers.length === 0 && <div className="empty card">Добави работници от таб „Работници“.</div>}
-        {workers.map((w, i) => {
-          const st = status[w.id];
-          const state = st?.state || 'off';
-          const t = liveTotals(st, logs[w.id], now);
-          const over = state === 'break' && settings.breakMaxMin > 0 && t.elapsed > settings.breakMaxMin * 60;
-          return (
-            <div key={w.id} className={`row card state-${state} stagger`} style={{ '--i': i }}>
-              <div className="row-main static">
-                <Avatar id={w.id} name={w.name} />
-                <div className="row-info">
-                  <div className="row-name">{w.name}</div>
-                  <div className="row-sub">
-                    <StatusPill state={state} />
-                    {state !== 'off' && <span className={`row-timer${over ? ' danger' : ''}`}>{timer(t.elapsed)}</span>}
-                  </div>
-                  <div className="row-meta">
-                    Днес: <b>{hm(t.w)}</b> работа · {hm(t.b)} почивка · {t.n}
-                    {settings.maxBreaks === null ? '' : `/${settings.maxBreaks}`} почивки
-                    {state === 'off' && st?.lastOut && dayKey(st.lastOut) === today ? ' · приключи днес' : ''}
-                  </div>
-                </div>
-                {state !== 'off' && (
-                  <button
-                    className={`btn btn-sm btn-red-o${confirm === w.id ? ' confirm' : ''}`}
-                    onClick={async () => {
-                      if (confirm !== w.id) return setConfirm(w.id);
-                      setConfirm(null);
-                      await call({ action: 'forceOut', id: w.id }).catch(() => {});
-                      ok(`${w.name} е приключен`);
-                    }}
-                  >
-                    {confirm === w.id ? 'Сигурен?' : 'Приключи'}
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        })}
+        {workers.map((w, i) => (
+          <LiveRow key={w.id} w={w} i={i} st={status[w.id]} log={logs[w.id]} settings={settings} call={call} ok={ok} />
+        ))}
       </div>
     </section>
   );
@@ -267,7 +282,8 @@ function NameEdit({ w, call, ok }) {
   );
 }
 
-function Cal({ data, now, call, ok }) {
+function Cal({ data, call, ok }) {
+  const now = useMinute();
   const { workers, status, logs } = data;
   const [sel, setSel] = useState(workers[0]?.id || null);
   const w = workers.find((x) => x.id === sel) || workers[0];

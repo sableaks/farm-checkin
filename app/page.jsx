@@ -1,17 +1,17 @@
 'use client';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
-import { useFarm, useNow, useStored, buzz } from '@/lib/client';
+import { useFarm, useStored, buzz } from '@/lib/client';
 import { Avatar, Header, Splash } from '@/components/ui';
 import MePanel from '@/components/MePanel';
 import WorkerRow from '@/components/WorkerRow';
 
 export default function Home() {
   const { data, online, apply } = useFarm();
-  const now = useNow();
   const [meId, setMeId] = useStored('farm-me', null);
   const [open, setOpen] = useState(null);
   const [picking, setPicking] = useState(false);
+  const toggle = useCallback((id) => setOpen((o) => (o === id ? null : id)), []);
 
   if (!data) return <Splash />;
 
@@ -22,7 +22,7 @@ export default function Home() {
 
   return (
     <main className="wrap">
-      <Header online={online} now={now} />
+      <Header online={online} />
 
       {me && !picking ? (
         <MePanel
@@ -31,7 +31,6 @@ export default function Home() {
           status={status[me.id]}
           log={logs[me.id]}
           settings={settings}
-          now={now}
           apply={apply}
           onChange={() => setPicking(true)}
         />
@@ -81,10 +80,9 @@ export default function Home() {
                 status={status[w.id]}
                 log={logs[w.id]}
                 settings={settings}
-                now={now}
-                isMe={w.id === meId}
+                      isMe={w.id === meId}
                 open={open === w.id}
-                onToggle={() => setOpen(open === w.id ? null : w.id)}
+                onToggle={toggle}
               />
             </div>
           ))}

@@ -1,4 +1,6 @@
 'use client';
+import { memo } from 'react';
+import { useMinute } from '@/lib/client';
 import { clock, hueFor, initials } from '@/lib/time';
 
 export function Avatar({ id, name, size = 44 }) {
@@ -31,7 +33,11 @@ export function StatusPill({ state = 'off' }) {
   );
 }
 
-export function Header({ online, now, right }) {
+function Clock() {
+  return clock(useMinute());
+}
+
+export const Header = memo(function Header({ online, right }) {
   return (
     <header className="top">
       <div className="brand">
@@ -44,14 +50,14 @@ export function Header({ online, now, right }) {
           <div className="brand-t">Ферма · Смени</div>
           <div className="brand-s">
             <span className={`live ${online ? 'on' : 'off'}`} />
-            {online ? 'На живо' : 'Няма връзка…'} · {clock(now)}
+            {online ? 'На живо' : 'Няма връзка…'} · <Clock />
           </div>
         </div>
       </div>
       {right}
     </header>
   );
-}
+});
 
 export function Splash() {
   return (

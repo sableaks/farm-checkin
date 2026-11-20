@@ -1,10 +1,12 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
+import { useNow } from '@/lib/client';
 import { hm, liveTotals, timer } from '@/lib/time';
 import { Avatar, StatusPill } from './ui';
 import Calendar from './Calendar';
 
-export default function WorkerRow({ worker, status, log, now, settings, open, onToggle, isMe, extra }) {
+function WorkerRow({ worker, status, log, settings, open, onToggle, isMe, extra }) {
+  const now = useNow();
   const t = liveTotals(status, log, now);
   const [mounted, setMounted] = useState(open);
   useEffect(() => {
@@ -16,7 +18,7 @@ export default function WorkerRow({ worker, status, log, now, settings, open, on
 
   return (
     <div className={`row card state-${state}${open ? ' open' : ''}`}>
-      <button className="row-main" onClick={onToggle} aria-expanded={open}>
+      <button className="row-main" onClick={() => onToggle(worker.id)} aria-expanded={open}>
         <Avatar id={worker.id} name={worker.name} />
         <div className="row-info">
           <div className="row-name">
@@ -53,3 +55,5 @@ export default function WorkerRow({ worker, status, log, now, settings, open, on
     </div>
   );
 }
+
+export default memo(WorkerRow);
